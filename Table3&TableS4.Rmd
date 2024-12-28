@@ -1,0 +1,789 @@
+---
+title: "Table3&TableS4"
+author: "zhanghaitao"
+date: "2023-12-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Load required libraries
+library(dplyr)
+library(caret)
+library(rio)
+library(pROC)
+library(ggsci)
+library(glmnet)
+
+# Import data from CSV files
+data_train <- import("train.csv")
+data_test <- import("test.csv")
+# Convert target variable to factor
+# For the 'infection' variable in both training and test datasets
+data_train$infection <- as.factor(data_train$infection)
+levels(data_train$infection) <- c("no", "yes")
+
+data_test$infection <- as.factor(data_test$infection)
+levels(data_test$infection) <- c("no", "yes")
+```
+
+
+```{r}
+# Create a data_trainControl object
+fitControl <- trainControl(
+    method = 'cv',                   # Use k-fold cross-validation
+    number = 10,                      # Set the number of folds
+    savePredictions = 'final',       # Save final predictions
+    classProbs = TRUE,               # Return class probabilities
+    summaryFunction = twoClassSummary # Summary function for results
+)
+```
+
+```{r glmStepAIC}
+# Set seed for reproducibility
+set.seed(123)
+
+# Train the model using glmStepAIC
+model_glmStepAIC <- train(
+  infection ~ ., 
+  data = data_train, 
+  method = 'glmStepAIC', 
+  metric = 'ROC', 
+  trControl = fitControl
+)
+
+# Make predictions on the test dataset
+pre_glmStepAIC <- predict(model_glmStepAIC, data_test, type = "prob")[, "yes"]
+
+# Calculate ROC curve and AUC
+ROC_glmStepAIC <- roc(data_test$infection, as.numeric(pre_glmStepAIC))
+
+# Output AUC
+auc_value <- auc(ROC_glmStepAIC)
+cat("AUC:", auc_value, "\n")
+
+# Calculate AUC confidence interval
+ci_result <- ci(ROC_glmStepAIC)
+cat("AUC Confidence Interval:", ci_result, "\n")
+```
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+
+# Convert data to matrix
+train <- data.matrix(data_train)
+test <- data.matrix(data_test)
+
+# Extract predictor variables (x) and response variable (y) from the training data
+x <- train[, 2:35]
+y <- train[, 1]
+
+# Use cv.glmnet to select lambda values
+cvfit <- cv.glmnet(x, y, type.measure = "auc", nfolds = 5, alpha = 1)
+
+# Plot the cross-validated AUC values for different lambda values
+plot(cvfit)
+
+# Get the lambda value that minimizes the cross-validated error
+best_lambda <- cvfit$lambda.min
+cat("Lambda.min:", best_lambda, "\n")
+
+# Get the lambda value within 1 standard error of the minimum cross-validated error
+best_lambda_1se <- cvfit$lambda.1se
+cat("Lambda.1se:", best_lambda_1se, "\n")
+
+# Fit a lasso model using the selected lambda
+lasso <- glmnet(x, y, family = "binomial", alpha = 1, lambda = best_lambda)
+
+# Display information about the lasso model
+print(lasso)
+
+# Plot the lasso path
+plot(lasso, xvar = "lambda", label = TRUE)
+
+# Get coefficients of the lasso model for the selected lambda
+lasso.coef <- predict(lasso, s = best_lambda, type = "coefficient")
+
+# Identify variables with non-zero coefficients
+coef.index <- which(lasso.coef != 0)
+var.min <- rownames(lasso.coef)[coef.index]
+
+# Build the model formula based on selected variables
+form <- as.formula(paste("y ~", paste(var.min[-1], collapse = "+")))
+form
+```
+```{r ROC曲线}
+# Fit the lasso model on the training set
+model_lasso <- glm(infection ~ nyha + X_Ray + MV + plasma + PCT + CRP, data = data_train, family = binomial())
+
+# Predict probabilities on the test set
+pred_lasso <- predict(model_lasso, newdata = data_test, type = "response")
+
+# Calculate ROC curve
+library(pROC)
+roc_lasso <- roc(data_test$infection, pred_lasso)
+
+# Plot the ROC curve for the training set
+plot(roc_lasso, main = "ROC Curve - Training Set", col = "blue")
+
+# Calculate AUC
+auc_value <- auc(roc_lasso)
+cat("AUC:", auc_value, "\n")
+
+# Calculate AUC confidence interval
+ci_result <- ci(roc_lasso)
+cat("AUC Confidence Interval:", ci_result, "\n")
+```
+
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+
+# Train the random forest model
+model_rf <- train(
+  infection ~ ., 
+  data = data_train, 
+  method = 'rf', 
+  tuneLength = 3, 
+  trControl = fitControl
+)
+
+# Make predictions on the test dataset
+pre_rf <- predict(model_rf, data_test, type = "prob")[, 'yes']
+
+# Calculate ROC curve and AUC
+ROC_rf <- roc(data_test$infection, as.numeric(unlist(pre_rf)))
+
+# Output AUC
+auc_value <- auc(ROC_rf)
+cat("AUC:", auc_value, "\n")
+
+# Calculate AUC confidence interval
+ci_result <- ci(auc_value)
+cat("AUC Confidence Interval:", ci_result, "\n")
+```
+
+
+```{r}
+# Set seed for reproducibility
+set.seed(1234)
+
+# Train the xgboost model
+model_xgbtree <- train(
+  infection ~ ., 
+  data = data_train, 
+  method = 'xgbTree', 
+  tuneLength = 3, 
+  trControl = fitControl,
+  verbose = FALSE
+)
+
+# Print information about the trained xgboost model
+print(model_xgbtree)
+
+# Make predictions on the test dataset
+pre_xgboost <- predict(model_xgbtree, data_test, type = "prob")[, 'yes']
+
+# Calculate ROC curve and AUC
+ROC_xgboost <- roc(data_test$infection, as.numeric(unlist(pre_xgboost)))
+
+# Output AUC
+auc_value <- auc(ROC_xgboost)
+cat("AUC:", auc_value, "\n")
+
+# Calculate AUC confidence interval
+ci_result <- ci(auc_value)
+cat("AUC Confidence Interval:", ci_result, "\n")
+```
+
+```{r}
+# Set seed for reproducibility
+set.seed(1234)
+
+# Train the SVM model
+model_svm <- train(
+  infection ~ ., 
+  data = data_train, 
+  method = 'svmLinear',  # Use a linear kernel; you can choose other kernel functions as needed
+  trControl = fitControl
+)
+
+# Print information about the trained SVM model
+print(model_svm)
+
+# Make predictions on the test dataset
+pre_svm <- predict(model_svm, data_test, type = "prob")[, 'yes']
+
+# Calculate ROC curve and AUC for the SVM model
+ROC_svm <- roc(data_test$infection, as.numeric(unlist(pre_svm)))
+
+# Output AUC for the SVM model
+auc_value_svm <- auc(ROC_svm)
+cat("AUC (SVM):", auc_value_svm, "\n")
+
+# Calculate AUC confidence interval for the SVM model
+ci_result_svm <- ci(auc_value_svm)
+cat("AUC Confidence Interval (SVM):", ci_result_svm, "\n")
+```
+
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+
+# Train a single-layer neural network model
+model_nn <- train(
+  infection ~ ., 
+  data = data_train, 
+  method = 'nnet', 
+  trControl = fitControl
+)
+
+# Print information about the trained neural network model
+print(model_nn)
+
+# Make predictions on the test dataset
+pre_nn <- predict(model_nn, data_test, type = "prob")[, 'yes']
+
+# Calculate ROC curve and AUC for the neural network model
+ROC_nn <- roc(data_test$infection, as.numeric(unlist(pre_nn)))
+
+# Output AUC for the neural network model
+auc_value_nn <- auc(ROC_nn)
+cat("AUC (Neural Network):", auc_value_nn, "\n")
+
+# Calculate AUC confidence interval for the neural network model
+ci_result_nn <- ci(auc_value_nn)
+cat("AUC Confidence Interval (Neural Network):", ci_result_nn, "\n")
+```
+
+```{r}
+# Convert the 'infection' variable in the training dataset to a factor
+data_train$infection <- as.factor(data_train$infection)
+levels(data_train$infection) <- c("0", "1")
+
+# Convert the 'infection' variable in the test dataset to a factor
+data_test$infection <- as.factor(data_test$infection)
+levels(data_test$infection) <- c("0", "1")
+```
+
+```{r}
+set.seed(123)
+# Extract function to calculate the best threshold
+calculate_best_threshold <- function(roc_object) {
+  thresholds <- roc_object$thresholds
+  sensitivity_specificity_sum <- roc_object$sensitivities + roc_object$specificities - 1
+  best_threshold <- thresholds[which.max(sensitivity_specificity_sum)]
+  return(best_threshold)
+}
+
+# Calculate the best threshold for the glmStepAIC model
+best_threshold_glmStepAIC <- calculate_best_threshold(ROC_glmStepAIC)
+
+# Apply the threshold to predict the binary class
+glmStepAIC_class <- as.factor(ifelse(pre_glmStepAIC > best_threshold_glmStepAIC, "1", "0"))
+
+# Calculate the confusion matrix for the glmStepAIC model
+cf_glmStepAIC <- confusionMatrix(
+  data = glmStepAIC_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the glmStepAIC model
+print("Best Threshold for glmStepAIC:")
+print(best_threshold_glmStepAIC)
+print("Confusion Matrix for glmStepAIC:")
+print(cf_glmStepAIC)
+```
+
+```{r}
+# Apply the threshold to predict the binary class
+glmStepAIC_class <- as.factor(ifelse(pre_glmStepAIC > 0.1, "1", "0"))
+
+# Calculate the confusion matrix for the glmStepAIC model
+cf_glmStepAIC <- confusionMatrix(
+  data = glmStepAIC_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the glmStepAIC model
+print("Best Threshold for glmStepAIC:")
+print(best_threshold_glmStepAIC)
+print("Confusion Matrix for glmStepAIC:")
+print(cf_glmStepAIC)
+```
+
+```{r}
+# Apply the threshold to predict the binary class
+glmStepAIC_class <- as.factor(ifelse(pre_glmStepAIC > 0.2, "1", "0"))
+
+# Calculate the confusion matrix for the glmStepAIC model
+cf_glmStepAIC <- confusionMatrix(
+  data = glmStepAIC_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the glmStepAIC model
+print("Best Threshold for glmStepAIC:")
+print(best_threshold_glmStepAIC)
+print("Confusion Matrix for glmStepAIC:")
+print(cf_glmStepAIC)
+```
+
+```{r}
+# Apply the threshold to predict the binary class
+glmStepAIC_class <- as.factor(ifelse(pre_glmStepAIC > 0.5, "1", "0"))
+
+# Calculate the confusion matrix for the glmStepAIC model
+cf_glmStepAIC <- confusionMatrix(
+  data = glmStepAIC_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the glmStepAIC model
+print("Best Threshold for glmStepAIC:")
+print(best_threshold_glmStepAIC)
+print("Confusion Matrix for glmStepAIC:")
+print(cf_glmStepAIC)
+```
+
+```{r}
+set.seed(123)
+# Extract function to calculate the best threshold
+calculate_best_threshold <- function(roc_object) {
+  thresholds <- roc_object$thresholds
+  sensitivity_specificity_sum <- roc_object$sensitivities + roc_object$specificities - 1
+  best_threshold <- thresholds[which.max(sensitivity_specificity_sum)]
+  return(best_threshold)
+}
+
+# Calculate the best threshold for the glmnet model
+best_threshold_glmnet <- calculate_best_threshold(roc_lasso)
+
+# Apply the threshold to predict the binary class
+glmnet_class <- as.factor(ifelse(pred_lasso > best_threshold_glmnet, "1", "0"))
+
+# Calculate the confusion matrix for the glmnet model
+cf_glmnet <- confusionMatrix(
+  data = glmnet_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the glmnet model
+print("Best Threshold for glmnet:")
+print(best_threshold_glmnet)
+print("Confusion Matrix for glmnet:")
+print(cf_glmnet)
+```
+
+
+```{r}
+# Apply the threshold to predict the binary class
+glmnet_class <- as.factor(ifelse(pred_lasso > 0.1, "1", "0"))
+
+# Calculate the confusion matrix for the glmnet model
+cf_glmnet <- confusionMatrix(
+  data = glmnet_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the glmnet model
+print("Best Threshold for glmnet:")
+print(best_threshold_glmnet)
+print("Confusion Matrix for glmnet:")
+print(cf_glmnet)
+```
+
+```{r}
+# Apply the threshold to predict the binary class
+glmnet_class <- as.factor(ifelse(pred_lasso > 0.2, "1", "0"))
+
+# Calculate the confusion matrix for the glmnet model
+cf_glmnet <- confusionMatrix(
+  data = glmnet_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the glmnet model
+print("Best Threshold for glmnet:")
+print(best_threshold_glmnet)
+print("Confusion Matrix for glmnet:")
+print(cf_glmnet)
+```
+
+```{r}
+# Apply the threshold to predict the binary class
+glmnet_class <- as.factor(ifelse(pred_lasso > 0.5, "1", "0"))
+
+# Calculate the confusion matrix for the glmnet model
+cf_glmnet <- confusionMatrix(
+  data = glmnet_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the glmnet model
+print("Best Threshold for glmnet:")
+print(best_threshold_glmnet)
+print("Confusion Matrix for glmnet:")
+print(cf_glmnet)
+```
+
+```{r}
+set.seed(123)
+# Extract function to calculate the best threshold
+calculate_best_threshold <- function(roc_object) {
+  thresholds <- roc_object$thresholds
+  sensitivity_specificity_sum <- roc_object$sensitivities + roc_object$specificities - 1
+  best_threshold <- thresholds[which.max(sensitivity_specificity_sum)]
+  return(best_threshold)
+}
+
+# Calculate the best threshold for the random forest (rf) model
+best_threshold_rf <- calculate_best_threshold(ROC_rf)
+
+# Apply the threshold to predict the binary class
+rf_class <- as.factor(ifelse(pre_rf > best_threshold_rf, "1", "0"))
+
+# Calculate the confusion matrix for the random forest (rf) model
+cf_rf <- confusionMatrix(
+  data = rf_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the random forest (rf) model
+print("Best Threshold for Random Forest:")
+print(best_threshold_rf)
+print("Confusion Matrix for Random Forest:")
+print(cf_rf)
+```
+```{r}
+# Apply the threshold to predict the binary class
+rf_class <- as.factor(ifelse(pre_rf > 0.1, "1", "0"))
+
+# Calculate the confusion matrix for the random forest (rf) model
+cf_rf <- confusionMatrix(
+  data = rf_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the random forest (rf) model
+print("Best Threshold for Random Forest:")
+print(best_threshold_rf)
+print("Confusion Matrix for Random Forest:")
+print(cf_rf)
+```
+
+```{r}
+# Apply the threshold to predict the binary class
+rf_class <- as.factor(ifelse(pre_rf > 0.2, "1", "0"))
+
+# Calculate the confusion matrix for the random forest (rf) model
+cf_rf <- confusionMatrix(
+  data = rf_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the random forest (rf) model
+print("Best Threshold for Random Forest:")
+print(best_threshold_rf)
+print("Confusion Matrix for Random Forest:")
+print(cf_rf)
+```
+
+
+```{r}
+# Apply the threshold to predict the binary class
+rf_class <- as.factor(ifelse(pre_rf > 0.5, "1", "0"))
+
+# Calculate the confusion matrix for the random forest (rf) model
+cf_rf <- confusionMatrix(
+  data = rf_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the random forest (rf) model
+print("Best Threshold for Random Forest:")
+print(best_threshold_rf)
+print("Confusion Matrix for Random Forest:")
+print(cf_rf)
+```
+
+```{r}
+# Calculate the best threshold for the XGBoost (xgbTree) model
+# Extract function to calculate the best threshold
+calculate_best_threshold <- function(roc_object) {
+  thresholds <- roc_object$thresholds
+  sensitivity_specificity_sum <- roc_object$sensitivities + roc_object$specificities - 1
+  best_threshold <- thresholds[which.max(sensitivity_specificity_sum)]
+  return(best_threshold)
+}
+
+best_threshold_xgboost <- calculate_best_threshold(ROC_xgboost)
+
+
+# Apply the threshold to predict the binary class
+xgboost_class <- as.factor(ifelse(pre_xgboost > best_threshold_xgboost, "1", "0"))
+
+# Calculate the confusion matrix for the XGBoost (xgbTree) model
+cf_xgboost <- confusionMatrix(
+  data = xgboost_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the XGBoost (xgbTree) model
+print("Best Threshold for XGBoost:")
+print(best_threshold_xgboost)
+print("Confusion Matrix for XGBoost:")
+print(cf_xgboost)
+```
+
+```{r}
+# Apply the threshold to predict the binary class
+xgboost_class <- as.factor(ifelse(pre_xgboost > 0.1, "1", "0"))
+
+# Calculate the confusion matrix for the XGBoost (xgbTree) model
+cf_xgboost <- confusionMatrix(
+  data = xgboost_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the XGBoost (xgbTree) model
+print("Best Threshold for XGBoost:")
+print(best_threshold_xgboost)
+print("Confusion Matrix for XGBoost:")
+print(cf_xgboost)
+```
+
+```{r}
+# Apply the threshold to predict the binary class
+xgboost_class <- as.factor(ifelse(pre_xgboost > 0.2, "1", "0"))
+
+# Calculate the confusion matrix for the XGBoost (xgbTree) model
+cf_xgboost <- confusionMatrix(
+  data = xgboost_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the XGBoost (xgbTree) model
+print("Best Threshold for XGBoost:")
+print(best_threshold_xgboost)
+print("Confusion Matrix for XGBoost:")
+print(cf_xgboost)
+```
+
+
+```{r}
+# Apply the threshold to predict the binary class
+xgboost_class <- as.factor(ifelse(pre_xgboost > 0.5, "1", "0"))
+
+# Calculate the confusion matrix for the XGBoost (xgbTree) model
+cf_xgboost <- confusionMatrix(
+  data = xgboost_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the XGBoost (xgbTree) model
+print("Best Threshold for XGBoost:")
+print(best_threshold_xgboost)
+print("Confusion Matrix for XGBoost:")
+print(cf_xgboost)
+```
+
+```{r}
+# Calculate the best threshold for the Support Vector Machine (SVM) model
+best_threshold_svm <- calculate_best_threshold(ROC_svm)
+
+# Apply the threshold to predict the binary class
+svm_class <- as.factor(ifelse(pre_svm > best_threshold_svm, "1", "0"))
+
+# Calculate the confusion matrix for the Support Vector Machine (SVM) model
+cf_svm <- confusionMatrix(
+  data = svm_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the Support Vector Machine (SVM) model
+print("Best Threshold for SVM:")
+print(best_threshold_svm)
+print("Confusion Matrix for SVM:")
+print(cf_svm)
+```
+
+
+```{r}
+# Apply the threshold to predict the binary class
+svm_class <- as.factor(ifelse(pre_svm > 0.1, "1", "0"))
+
+# Calculate the confusion matrix for the Support Vector Machine (SVM) model
+cf_svm <- confusionMatrix(
+  data = svm_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the Support Vector Machine (SVM) model
+print("Best Threshold for SVM:")
+print(best_threshold_svm)
+print("Confusion Matrix for SVM:")
+print(cf_svm)
+```
+
+```{r}
+# Apply the threshold to predict the binary class
+svm_class <- as.factor(ifelse(pre_svm > 0.2, "1", "0"))
+
+# Calculate the confusion matrix for the Support Vector Machine (SVM) model
+cf_svm <- confusionMatrix(
+  data = svm_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the Support Vector Machine (SVM) model
+print("Best Threshold for SVM:")
+print(best_threshold_svm)
+print("Confusion Matrix for SVM:")
+print(cf_svm)
+```
+
+```{r}
+# Apply the threshold to predict the binary class
+svm_class <- as.factor(ifelse(pre_svm > 0.5, "1", "0"))
+
+# Calculate the confusion matrix for the Support Vector Machine (SVM) model
+cf_svm <- confusionMatrix(
+  data = svm_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the Support Vector Machine (SVM) model
+print("Best Threshold for SVM:")
+print(best_threshold_svm)
+print("Confusion Matrix for SVM:")
+print(cf_svm)
+```
+
+```{r}
+# Calculate the best threshold for the Neural Network (nnet) model
+best_threshold_nn <- calculate_best_threshold(ROC_nn)
+
+# Apply the threshold to predict the binary class
+nn_class <- as.factor(ifelse(pre_nn > best_threshold_nn, "1", "0"))
+
+# Calculate the confusion matrix for the Neural Network (nnet) model
+cf_nn <- confusionMatrix(
+  data = nn_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the Neural Network (nnet) model
+print("Best Threshold for Neural Network:")
+print(best_threshold_nn)
+print("Confusion Matrix for Neural Network:")
+print(cf_nn)
+```
+
+
+```{R}
+# Apply the threshold to predict the binary class
+nn_class <- as.factor(ifelse(pre_nn > 0.1, "1", "0"))
+
+# Calculate the confusion matrix for the Neural Network (nnet) model
+cf_nn <- confusionMatrix(
+  data = nn_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the Neural Network (nnet) model
+print("Best Threshold for Neural Network:")
+print(best_threshold_nn)
+print("Confusion Matrix for Neural Network:")
+print(cf_nn)
+```
+
+```{R}
+# Apply the threshold to predict the binary class
+nn_class <- as.factor(ifelse(pre_nn > 0.2, "1", "0"))
+
+# Calculate the confusion matrix for the Neural Network (nnet) model
+cf_nn <- confusionMatrix(
+  data = nn_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the Neural Network (nnet) model
+print("Best Threshold for Neural Network:")
+print(best_threshold_nn)
+print("Confusion Matrix for Neural Network:")
+print(cf_nn)
+```
+
+```{R}
+# Apply the threshold to predict the binary class
+nn_class <- as.factor(ifelse(pre_nn > 0.5, "1", "0"))
+
+# Calculate the confusion matrix for the Neural Network (nnet) model
+cf_nn <- confusionMatrix(
+  data = nn_class,
+  reference = data_test$infection,
+  positive = "1",
+  mode = "everything"
+)
+
+# Output the best threshold and confusion matrix for the Neural Network (nnet) model
+print("Best Threshold for Neural Network:")
+print(best_threshold_nn)
+print("Confusion Matrix for Neural Network:")
+print(cf_nn)
+```
+```{r}
+saveRDS(model_glmStepAIC, file = "model_glmStepAIC.rds")
+saveRDS(model_lasso, file = "model_lasso.rds")
+saveRDS(model_rf, file = "model_rf.rds")
+saveRDS(model_xgbtree, file = "model_xgbtree.rds")
+saveRDS(model_svm, file = "model_svm")
+saveRDS(model_nn, file = "model_nn.rds")
+```
+
