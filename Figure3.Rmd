@@ -1,0 +1,179 @@
+---
+title: "figure3"
+author: "zhanghaitao"
+date: "2023-12-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(pROC)
+library(ggsci)
+library(rio)
+library(ggplot2)
+model_glmStepAIC <- readRDS("model_glmStepAIC.rds")
+model_lasso <- readRDS("model_lasso.rds")
+model_nn <- readRDS("model_nn.rds")
+model_rf <- readRDS("model_rf.rds")
+model_svm <- readRDS("model_svm")
+model_xgbtree <- readRDS("model_xgbtree.rds")
+data_test <- import("test.csv")
+```
+
+```{r}
+# Make predictions on the test dataset
+pre_glmStepAIC <- predict(model_glmStepAIC, data_test, type = "prob")[, "yes"]
+# Calculate ROC curve and AUC
+ROC_glmStepAIC <- roc(data_test$infection, as.numeric(pre_glmStepAIC))
+
+pred_lasso <- predict(model_lasso, newdata = data_test, type = "response")
+
+Roc_lasso <- roc(data_test$infection, pred_lasso)
+
+pre_rf <- predict(model_rf, data_test, type = "prob")[, 'yes']
+
+ROC_rf <- roc(data_test$infection, as.numeric(unlist(pre_rf)))
+
+pre_xgboost <- predict(model_xgbtree, data_test, type = "prob")[, 'yes']
+
+ROC_xgboost <- roc(data_test$infection, as.numeric(unlist(pre_xgboost)))
+
+pre_svm <- predict(model_svm, data_test, type = "prob")[, 'yes']
+
+ROC_svm <- roc(data_test$infection, as.numeric(unlist(pre_svm)))
+
+pre_nn <- predict(model_nn, data_test, type = "prob")[, 'yes']
+
+# Calculate ROC curve and AUC for the neural network model
+ROC_nn <- roc(data_test$infection, as.numeric(unlist(pre_nn)))
+```
+
+```{r}
+# Multiple ROC curves:
+ROC_post <- ggroc(list(
+                      LogisticRegression = ROC_glmStepAIC, 
+                      LASSO = Roc_lasso,
+                      RandomForest = ROC_rf,
+                      XGBoost = ROC_xgboost,
+                      SVM = ROC_svm,
+                      NeuralNetwork = ROC_nn
+                    ),
+                 legacy.axes = TRUE,
+                 alpha = 1,  size = 1.2) +
+  
+  # 设置 Y 轴的范围
+  scale_y_continuous(expand = c(0, 0)) +       
+  
+  # 设置 X 轴的范围
+  scale_x_continuous(expand = c(0, 0)) +
+ 
+  # 设置颜色主题
+  scale_color_npg() +
+  
+  # 设置图表的主题为浅色
+  theme_light() +
+  
+  # 添加虚线辅助线，表示随机分类的性能
+  geom_segment(x = 0, xend = 1, y = 0, yend = 1, 
+               color = "grey", linetype = "dashed", size = 1) +
+
+  
+  # 隐藏主要网格线和次要网格线
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  
+  # 隐藏面板边界和坐标轴线
+  theme(panel.border = element_blank(), axis.line = element_line()) +
+  
+  # 设置图例的位置
+  theme(legend.position = c(0.85, 0.25)) +
+  
+  # 设置图例标题的样式
+  guides(color = guide_legend(title = "Models")) +
+  theme(legend.title = element_text(size = 14, face = "plain")) +
+  
+  # 设置图例文本的样式
+  theme(legend.text = element_text(size = 14, face = "plain")) +
+  
+  # 设置坐标轴标题的样式
+  theme(axis.title.x = element_text(size = 14, face = "plain")) +
+  theme(axis.title.y = element_text(size = 14, face = "plain")) +
+  
+  # 设置坐标轴文本的样式
+  theme(axis.text = element_text(size = 14, face = "plain")) +
+  
+  # 设置图例的背景
+  theme(legend.background = element_rect(fill = "white", colour = "black")) +
+  
+  # 设置图的边距
+  theme(plot.margin = unit(c(0.4, 0.4, 0.4, 0.4), "inches")) 
+
+ROC_post
+```
+
+
+```{r}
+library(ggplot2)
+library(gridExtra)
+library(xgboost)
+# 提取变量重要性(XGBoost)
+importance_xgb <- xgboost::xgb.importance(model = model_xgbtree$finalModel)
+top_features_xgb <- importance_xgb[order(importance_xgb$Feature, decreasing = TRUE), ][1:10, ]
+# 将 Feature 列中的 IL6 修改为 "白介素6"
+top_features_xgb$Feature[top_features_xgb$Feature == "IL6"] <- "IL-6"
+top_features_xgb$Feature[top_features_xgb$Feature == "X_Ray"] <- "CXR Exudation"
+top_features_xgb$Feature[top_features_xgb$Feature == "nyha"] <- "NYHA class≥III"
+top_features_xgb$Feature[top_features_xgb$Feature == "plasma"] <- "Plasma"
+# 转换为数据框
+df_xgb <- data.frame(
+  Variable = top_features_xgb$Feature,
+  Importance = as.numeric(top_features_xgb$Gain*1000)
+)
+
+# 创建 ggplot2 图表(XGBoost)
+gg_xgb <- ggplot(df_xgb, aes(x = reorder(Variable, log(Importance)), y = Importance)) +
+  geom_col(fill = "#009E73") +
+  labs(title = "Top 10 Variable Importance - XGBoost", x = "Variable", y = "Importance(multiplied by 1000\n and log2-transformed)") +
+  theme_light() +
+  scale_color_npg() +
+  theme(panel.grid = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1))+  # 适当旋转X轴标签
+(scale_y_continuous(trans = "log2"))
+# 将两张图并行排列
+# 将两张图并行排列，只在一个图形中使用 coord_flip()
+grid.arrange(gg_xgb + coord_flip())
+```
+
+
+```{r}
+library(ggplot2)
+library(gridExtra)
+library(xgboost)
+library(dplyr)
+
+# 提取变量重要性(XGBoost)
+importance_xgb <- xgboost::xgb.importance(model = model_xgbtree$finalModel)
+importance_xgb <- importance_xgb[complete.cases(importance_xgb), ]
+importance_xgb$Feature <- factor(importance_xgb$Feature, levels = importance_xgb$Feature[order(importance_xgb$Gain, decreasing = TRUE)])
+top_features_xgb <- importance_xgb[order(importance_xgb$Feature, decreasing = F), ][1:10, ]
+# 修正变量名
+top_features_xgb$Feature <- recode(top_features_xgb$Feature,
+  "IL6" = "IL-6",
+  "X_Ray" = "CXR Exudation",
+  "nyha" = "NYHA class≥III",
+  "plasma" = "Plasma"
+)
+
+top_features_xgb <- na.omit(top_features_xgb)
+
+gg_xgb <- ggplot(top_features_xgb, aes(x = reorder(Feature, Gain), y = Gain * 1000)) +
+  geom_col(fill = "#009E73", position = "identity") +
+  labs(title = "Top 9 Variable Importance - XGBoost", x = "Variable", y = "Importance (multiplied by 1000 and log2-transformed)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), panel.background = element_rect(fill = "white"),  # 设置背景颜色为白色
+    axis.line = element_line(color = "black"),        # 设置轴线颜色为黑色
+    axis.text = element_text(color = "black")) +
+  scale_y_continuous(trans = "log2")
+# 将两张图并行排列，只在一个图形中使用 coord_flip()
+grid.arrange(gg_xgb + coord_flip())
+# 调整分辨率和保存为 PNG
+ggsave("your_plot.png", plot = gg_xgb+ coord_flip(), width = 10, height = 6, dpi = 300)
+```
