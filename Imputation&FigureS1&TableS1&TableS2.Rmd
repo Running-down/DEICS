@@ -1,0 +1,142 @@
+---
+title: "Imputation&FigureS1&TableS1&TableS2"
+author: "zhanghaitao"
+date: "2023-12-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Load necessary libraries
+library(caret)
+library(randomForest)
+library(xgboost)
+library(mice)
+library(rio)
+library(pROC)
+library(tableone)
+library(VIM)
+
+# Create a dataset with missing data
+set.seed(123)
+data_miss_train <- import("pre_imp_train.csv")  # Import the training dataset with missing values
+data_miss_test <- import("pre_imp_test.csv")    # Import the testing dataset with missing values
+```
+
+```{r}
+# Rename columns to more meaningful names in the training dataset
+names(data_miss_train)[names(data_miss_train) == "ALB_0"] <- "Albumin"
+names(data_miss_train)[names(data_miss_train) == "IL6"] <- "IL-6"
+
+# Use the aggr function to visualize missing values, showing only variables with missing data
+vars_with_missing <- names(data_miss_train)[colSums(is.na(data_miss_train)) > 0]
+aggr(data_miss_train[36:39], numbers = T, sortVars = T, onlyVars = vars_with_missing, cex.axis = 0.8)
+
+# Rename columns to more meaningful names in the testing dataset
+names(data_miss_test)[names(data_miss_test) == "ALB_0"] <- "Albumin"
+names(data_miss_test)[names(data_miss_test) == "IL6"] <- "IL-6"
+
+# Use the aggr function to visualize missing values, showing only variables with missing data
+vars_with_missing <- names(data_miss_test)[colSums(is.na(data_miss_test)) > 0]
+aggr(data_miss_test[36:39], numbers = T, sortVars = T, onlyVars = vars_with_missing, cex.axis = 0.8)
+```
+
+```{r}
+# Select variables
+myVars <- dput(names(data_miss_train))
+catVars <- myVars[c(1:24)]
+
+# Create Table 1
+tb_s1 <- CreateTableOne(vars = myVars, strata = c("group"), data = data_miss_train, factorVars = catVars)
+tabs1 <- print(tb_s1, nonnormal = c( "LVEF", "CPB", "ACC", 
+"DHCA", "RBCs", "plasma", "LOS", "ICU", 
+"MV", "age", "BMI", "ALB_0", "PCT", "CRP", "IL6"), smd = TRUE)
+
+# Summarize and print the table
+summary_tabs1 <- summary(tabs1)
+print(summary_tabs1)
+
+# Save to a CSV file
+write.csv(tabs1, file = "table_s1.csv")
+```
+
+```{r}
+# Select variables
+myVars <- dput(names(data_miss_test))
+catVars <- myVars[c(1:24)]
+
+# Create Table 1
+tb_s2 <- CreateTableOne(vars = myVars, strata = c("group"), data = data_miss_test, factorVars = catVars)
+tabs2 <- print(tb_s2, nonnormal = c( "LVEF", "CPB", "ACC", 
+"DHCA", "RBCs", "plasma", "LOS", "ICU", 
+"MV", "age", "BMI", "ALB_0", "PCT", "CRP", "IL6"), smd = TRUE)
+
+# Summarize and print the table
+summary_tabs2 <- summary(tabs2)
+print(summary_tabs2)
+
+# Save to a CSV file
+write.csv(tabs2, file = "table_s2.csv")
+```
+
+```{r}
+set.seed(123)
+
+# Use the mice function to create a multiple imputation object
+imputed_data_train <- mice(data_miss_train, method = "pmm", m = 5, maxit = 50)
+
+# Retrieve the imputed data
+completed_train <- complete(imputed_data_train)
+
+# Write the completed data to a CSV file
+write.csv(completed_train, file = "train.csv")
+```
+
+```{r}
+set.seed(123)
+
+# Use the mice function to create a multiple imputation object
+imputed_data_test <- mice(data_miss_test, method = "pmm", m = 5, maxit = 50)
+
+# Retrieve the imputed data
+completed_test <- complete(imputed_data_test)
+
+# Write the completed data to a CSV file
+write.csv(completed_test, file = "test.csv")
+```
+
+```{r}
+# Select variables
+data_S3_train <- import("table3_train.CSV")
+myVars <- dput(names(data_S3_train))
+catVars <- myVars[c(1)]
+
+# Create Table 1
+tb_s3_train <- CreateTableOne(vars = myVars, strata = c("group"), data = data_S3_train, factorVars = catVars)
+tabs3_train <- print(tb_s3_train, nonnormal = c("ALB_0", "PCT", "CRP", "IL6"), smd = TRUE)
+
+# Summarize and print the table
+summary_tabs3_train <- summary(tabs3_train)
+print(summary_tabs3_train)
+
+# Save to a CSV file
+write.csv(tabs3_train, file = "table_s3_train.csv")
+```
+
+
+```{r}
+# Select variables
+data_S3_test <- import("table3_test.CSV")
+myVars <- dput(names(data_S3_test))
+catVars <- myVars[c(1)]
+
+# Create Table 1
+tb_s3_test <- CreateTableOne(vars = myVars, strata = c("group"), data = data_S3_test, factorVars = catVars)
+tabs3_test <- print(tb_s3_test, nonnormal = c("ALB_0", "PCT", "CRP", "IL6"), smd = TRUE)
+
+# Summarize and print the table
+summary_tabs3_test <- summary(tabs3_test)
+print(summary_tabs3_test)
+
+# Save to a CSV file
+write.csv(tabs3_test, file = "table_s3_test.csv")
+```
