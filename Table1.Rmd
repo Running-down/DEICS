@@ -1,0 +1,45 @@
+---
+title: "Table1"
+author: "zhanghaitao"
+date: "2023-12-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tableone)
+library(rio)
+data_train <- import("train.csv")
+data_test <- import("test.csv")
+```
+
+```{r add group}
+# Add a 'group' column to the training dataset
+data_train$group <- 'training_datasets'
+
+# Add a 'group' column to the testing dataset
+data_test$group <- 'testing_datasets'
+
+# Combine training and testing datasets using rbind
+clinical_info <- rbind(data_train, data_test)
+
+# Convert the 'group' column to a factor
+clinical_info$group <- factor(clinical_info$group)
+```
+
+```{r}
+# Select variables
+myVars <- dput(names(clinical_info))
+catVars <- myVars[c(1:22)]
+
+# Create Table 1
+tb_group <- CreateTableOne(vars = myVars, strata = c("group"), data = clinical_info, factorVars = catVars)
+tab1 <- print(tb_group, nonnormal = c("MV", "LVEF", "CPB", "ACC", "DHCA", "RBCs", 
+"plasma", "age", "BMI", "ALB_0", "PCT", "CRP", "IL6"), smd = TRUE)
+
+# Summarize and print the table
+summary_tab1 <- summary(tab1)
+print(summary_tab1)
+
+# Save to a CSV file
+write.csv(tab1, file = "table1.csv")
+```
