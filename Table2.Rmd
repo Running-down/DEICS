@@ -1,0 +1,48 @@
+---
+title: "Table2"
+author: "zhanghaitao"
+date: "2023-12-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tableone)
+library(rio)
+data_train_outc <- import("train_outcome.csv")
+data_test_outc <- import("test_outcome.csv")
+```
+
+
+```{r}
+# Select variables
+myVars <- dput(names(data_train_outc))
+catVars <- myVars[c(1:2)]
+
+# Create Table 1
+tb_train_outc <- CreateTableOne(vars = myVars, strata = c("infection"), data = data_train_outc, factorVars = catVars)
+tab_train_outc <- print(tb_train_outc, nonnormal = c("LOS", "ICU", "MV"), smd = TRUE)
+
+# Summarize and print the table
+summary_tab_train_outc <- summary(tab_train_outc)
+print(summary_tab_train_outc)
+
+# Save to a CSV file
+write.csv(tab_train_outc, file = "table_2_train.csv")
+```
+
+```{r}
+# Select variables
+myVars <- dput(names(data_test_outc))
+catVars <- myVars[c(1:2)]
+
+# Create Table 1
+tb_test_outc <- CreateTableOne(vars = myVars, strata = c("infection"), data = data_test_outc, factorVars = catVars)
+tab_test_outc <- print(tb_test_outc, nonnormal = c("LOS", "ICU", "MV"), smd = TRUE)
+
+# Summarize and print the table
+summary_tab_test_outc <- summary(tab_test_outc)
+print(summary_tab_test_outc)
+
+# Save to a CSV file
+write.csv(tab_test_outc, file = "table_2_test.csv")
+```
