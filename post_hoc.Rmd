@@ -1,0 +1,118 @@
+---
+title: "post hoc power analysis"
+author: "zhanght"
+date: "2024-12-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Install and load necessary packages
+library(pROC)
+library(pwr)
+
+# Assume your sample size is 601
+n <- 601
+
+# Your AUC value and confidence interval
+auc <- 0.96
+lower_ci <- 0.93
+upper_ci <- 0.98
+
+# Calculate effect size (Cohen's d) based on AUC
+# Cohen's d formula reference: d = 2 * |AUC - 0.5|
+effect_size <- 2 * abs(auc - 0.5)
+
+# Perform power analysis using the pwr package
+# Assume a two-sample t-test for the calculation
+power_analysis <- pwr.t.test(n = n, d = effect_size, sig.level = 0.05, type = "two.sample")
+
+# Output the power analysis results
+print(power_analysis)
+
+# You can further calculate the standard error of the AUC
+se_auc <- sqrt( (auc * (1 - auc)) / n)
+
+# Calculate the Z-value for AUC
+z_value <- (auc - 0.5) / se_auc
+
+# Compute power
+power <- pnorm(z_value)
+
+cat("Calculated power for the given AUC:", power, "\n")
+```
+
+```{r}
+library(pROC)
+library(rio)
+library(xgboost)
+library(caret)
+
+# Load the model and data
+model_xgbtree <- readRDS("model_xgbtree.rds")
+data_test <- import("test.csv")
+
+# Use the model for prediction
+pre_xgboost <- predict(model_xgbtree, data_test, type = "prob")[, 'yes']
+# Add the predicted probabilities to the dataset
+data_test$predicted_prob <- pre_xgboost
+
+# Retrieve all procedure types
+subgroups <- unique(data_test$Procedure_name)
+
+# Initialize a list to store results
+performance_results <- list()
+
+# Group by procedure type and compute various metrics
+for (group in subgroups) {
+  # Subset data for the current procedure type
+  group_data <- subset(data_test, Procedure_name == group)
+  
+  # Ensure there are enough data points and valid class labels
+  if (nrow(group_data) > 1 && length(unique(group_data$infection)) == 2) {
+    # Compute ROC and AUC
+    roc_result <- roc(group_data$infection, group_data$predicted_prob)
+    auc_value <- auc(roc_result)
+    
+    # Compute 95% confidence interval for AUC
+    auc_ci <- ci.auc(roc_result)
+    
+    # Generate classification predictions (using 0.5 as the threshold)
+    predicted_class <- ifelse(group_data$predicted_prob > 0.5, 1, 0)
+    
+    # Confusion matrix to calculate other metrics
+    confusion <- confusionMatrix(factor(predicted_class), factor(group_data$infection))
+    
+    # Extract other performance metrics
+    accuracy <- confusion$overall['Accuracy']
+    kappa <- confusion$overall['Kappa']
+    sensitivity <- confusion$byClass['Sensitivity']
+    specificity <- confusion$byClass['Specificity']
+    ppv <- confusion$byClass['Pos Pred Value']
+    npv <- confusion$byClass['Neg Pred Value']
+    recall <- sensitivity  # Recall = Sensitivity
+    f_score <- (2 * sensitivity * ppv) / (sensitivity + ppv)
+    
+    # Store the results
+    performance_results[[group]] <- list(
+      AUC = auc_value,
+      AUC_CI = auc_ci,
+      Accuracy = accuracy,
+      Kappa = kappa,
+      Sensitivity = sensitivity,
+      Specificity = specificity,
+      PPV = ppv,
+      NPV = npv,
+      Recall = recall,
+      F_score = f_score
+    )
+  } else {
+    performance_results[[group]] <- NA  # Return NA if data is insufficient or class labels are invalid
+  }
+}
+
+# Print the performance metrics for each procedure type
+print(performance_results)
+```
+
+
+
