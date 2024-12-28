@@ -1,0 +1,49 @@
+---
+title: "Table4&TableS5&TableS6"
+author: "zhanghaitao"
+date: "2023-12-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tableone)
+library(rio)
+data_S5 <- import("control_55_55.csv")
+data_S6 <- import("control_29_30.csv")
+```
+
+```{r}
+# Select variables
+myVars <- dput(names(data_S5))
+catVars <- myVars[c(1:24)]
+
+# Create Table 1
+tb_S5 <- CreateTableOne(vars = myVars, strata = c("group"), data = data_S5, factorVars = catVars)
+tab_S5 <- print(tb_S5, nonnormal = c("LVEF", "CPB", "ACC", "DHCA", "RBCs", "plasma", "MV", "age", "BMI", "ALB_0", "PCT", "CRP", "IL6", "LOS", "ICU", "AUD_daily_time", 
+"DDD", "AUD_daily_dose", "AUD", "inpaitens_cost"), smd = TRUE)
+
+# Summarize and print the table
+summary_tab_S5 <- summary(tab_S5)
+print(summary_tab_S5)
+
+# Save to a CSV file
+write.csv(tab_S5, file = "table_S5.csv")
+```
+
+```{r}
+# Select variables
+myVars <- dput(names(data_S6))
+catVars <- myVars[c(1:24)]
+
+# Create Table 1
+tb_S6 <- CreateTableOne(vars = myVars, strata = c("group"), data = data_S6, factorVars = catVars)
+tab_S6 <- print(tb_S6, nonnormal = c("LVEF", "CPB", "ACC", "DHCA", "RBCs", "plasma", "MV", "age", "BMI", "ALB_0", "PCT", "CRP", "IL6", "LOS", "ICU", "AUD_daily_time", 
+"DDD", "AUD_daily_dose", "AUD", "inpaitens_cost"), smd = TRUE)
+
+# Summarize and print the table
+summary_tab_S6 <- summary(tab_S6)
+print(summary_tab_S6)
+
+# Save to a CSV file
+write.csv(tab_S6, file = "table_S6.csv")
+```
