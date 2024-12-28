@@ -1,0 +1,26 @@
+---
+title: "FIGS2"
+author: "zhanghaitao"
+date: "2023-12-31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(rio)
+data_test <- import("test.csv")
+model_xgbtree <- readRDS("model_xgbtree.rds")
+```
+
+```{r}
+# Use the previously trained model to make predictions
+predictions <- predict(model_xgbtree, data_test, type = "prob")
+
+# Extract the predicted probability values (e.g., for the "yes" class)
+predicted_probabilities <- predictions[, 'yes']
+
+# Combine the probability values with the actual class labels into a data frame
+results_df <- data.frame(Actual = data_test$infection, Predicted_Prob = predicted_probabilities)
+
+# Save the resulting data frame for further analysis
+write.csv(results_df, "predicted_probabilities.csv", row.names = FALSE)
+```
