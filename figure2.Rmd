@@ -1,0 +1,60 @@
+---
+title: "figure2"
+author: "zhanghaitao"
+date: "2023-12-30"
+output: html_document
+---
+
+```{r}
+# 加载必要的包
+library(ggplot2)
+library(gridExtra)
+library(ggsci)
+library(grid)
+# 设置全局字体为一种类似 Times New Roman 的字体
+theme_set(theme_minimal(base_family = "serif"))
+
+# 给定的细菌名称
+bacteria_names <- c("Klebsiella Pneumoniae", "Pseudomonas Aeruginosa", "Acinetobacter Baumanii", "Enterobacter cloacae", "Staphylococcus Aureus")
+
+# 给定的细菌数据（这里使用随机数据，实际上你需要提供你的数据）
+bacteria_data <- data.frame(
+  bacteria = bacteria_names,
+  abbreviation = c("KP", "PA", "AB", "EC", "SA"),  # 缩写
+  value = c(87, 40, 30, 22, 17)
+)
+
+# 创建柱状图，标签在左侧
+bar_plot <- ggplot(bacteria_data, aes(x = abbreviation, y = value, fill = bacteria)) +
+  geom_bar(stat = "identity", position = position_dodge2(0.9, padding = 0.1), width = 0.7) +
+  scale_fill_npg() +  # 设置填充颜色
+  scale_color_npg() +  # 设置边框颜色
+  labs(x = "Pathogen", y = "Number") +
+  scale_fill_discrete(name = "Pathogen") +
+  theme(
+    panel.grid = element_blank(),  # 不显示网格
+    axis.text = element_text(size = 12),  # 设置坐标轴文本大小
+    axis.title = element_text(size = 14),  # 设置坐标轴标题大小
+    axis.line = element_line(size = 0.8)  # 显示坐标轴线
+  )
+
+# 感染类型数据
+infection_data <- data.frame(
+  type = c("Pneumonia(n = 170)", "Sepsis(n = 9)", "Pneumonia and Sepsis(n = 9)"),
+  Proportion = c(90.3, 4.8, 4.8)  # 以百分比表示的占比
+)
+
+# 创建饼图，使用 scale_fill_npg() 配色方案
+pie_chart <- ggplot(infection_data, aes(x = "", y = Proportion, fill = type)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +
+  geom_text(aes(x = 1.5, label = paste0(Proportion, "%")), position = position_stack(vjust = 0.5), size = 4) +
+  coord_polar(theta = "y") +
+  labs(fill = "EPOI type") +
+  scale_fill_npg()
+
+# 将柱状图和饼图结合在一张图上，并添加编号
+combined_plot <- grid.arrange(bar_plot, pie_chart, ncol = 2, top = textGrob("Bacterial Spectrum and EPOI Types", x = unit(0.5, "npc"), y = unit(1, "npc"), just = c("center", "top"), gp = gpar(fontsize = 14, fontface = "bold")))
+# 显示合并后的图
+print(combined_plot)
+grid.draw(combined_plot)
+```
